@@ -49,33 +49,6 @@ def train(x,y,nestim=50,split=True,test_frac=0.1):
 
     return ranfor
 
-def predict(x_new,model):
-    '''Predict using trained model'''
-
-    y_new = model.predict(x_new)
-
-    return y_new
-
-def use(formula,url):
-    '''Use model for new structures'''
-
-    # get structure from CIF
-    s = digest(url)
-
-    atom_feats = get_atom_feats(formula)
-    lat_feats = get_crys_feats(formula)
-    rdf = radial_dist_func(s)
-
-    # initialize dataframe
-    crys_data = pd.DataFrame(columns=['pretty_formula','initial_structure',
-                  'atomic_features','lattice_features','radial_dist','chem'])
-
-    crys_data["composition"] = str_to_composition(crys_data["pretty_formula"]) 
-    cp.ValenceOrbital().featurize_dataframe(crys_data, col_id="composition")  
-
-    return y_new
-
-
 def query_data(pname,api_key,path=''):
 
 
@@ -108,3 +81,55 @@ def query_data(pname,api_key,path=''):
     print('Saved file to ',fname)
     
     return data
+
+def predict(x_new,model):
+    '''Predict using trained model'''
+
+    y_new = model.predict(x_new)
+
+    return y_new
+
+def use(formula,url):
+    '''Use model for new structures'''
+
+    # get structure from CIF
+    s = digest(url)
+
+    atom_feats = get_atom_feats(formula)
+    lat_feats = get_crys_feats(formula)
+    rdf = radial_dist_func(s)
+
+    # initialize dataframe
+    crys_data = pd.DataFrame(columns=['pretty_formula','initial_structure',
+                  'atomic_features','lattice_features','radial_dist','chem'])
+
+    crys_data["composition"] = str_to_composition(crys_data["pretty_formula"]) 
+    cp.ValenceOrbital().featurize_dataframe(crys_data, col_id="composition")  
+
+    return y_new
+
+def filter_data(df,elems,pname,pmin=None,pmax=None,stab=None):
+  
+  # filter by chemistry
+  inds = np.zeros((len(elems),len(df)))
+  for i,item in enumerate(elems):
+    inds[i,:] = (df['pretty_formula'].str.contains(item))
+    
+  idx = np.prod(inds,axis=0)
+  df = df[idx==1]
+  print(len(df))
+  
+  # filter by property values
+  if pmin:
+    df = df[df[pname] >= pmin]
+  if pmax:
+    df = df[df[pname] <= pmax]
+  print(len(df))
+    
+  # filter by stability
+  if stab:
+    df = df[df['e_above_hull'] <= stab]
+    
+  print(len(df))
+  
+  return df
