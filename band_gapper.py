@@ -75,9 +75,9 @@ def query_data(pname,api_key,path=''):
         structures = structures.append(mpdr.get_dataframe({"material_id":{"$in": sublist}}, ['structure']))
     
     data = pd.concat([props,structures],axis=1)
-    fname = '%s/%s.csv' % (path,pname)
+    fname = '%s/%s.pkl' % (path,pname)
 
-    data.to_csv(fname)
+    data.to_pickle(fname)
     print('Saved file to ',fname)
     
     return data
@@ -131,5 +131,98 @@ def filter_data(df,elems,pname,pmin=None,pmax=None,stab=None):
     df = df[df['e_above_hull'] <= stab]
     
   print(len(df))
+  
+  return df
+
+def add_atom_feats(df):
+  
+  avg_row = []
+  avg_col = []
+  avg_num = []
+  el_neg = []
+  at_mass = []
+  at_r = []
+  io_r = []
+  
+  # loop through entries
+  for index, row in df.iterrows(): 
+    
+    comp = Composition(row['pretty_formula'])
+    elem,fracs = zip(*comp.fractional_composition.items())
+
+    # 0. average row in the periodic table
+    try:
+      avg_row.append(sum([el.row*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      avg_row.append(float('nan'))
+    
+    # 1. average column in the periodic table
+    try:
+      avg_col.append(sum([el.group*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      avg_col.append(float('nan'))
+  
+    # 2. average atomic number
+    try:
+      avg_num.append(sum([el.number*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      avg_num.append(float('nan'))
+    
+    # 3. average electronegativity
+    try:
+      el_neg.append(sum([el.X*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      el_neg.append(float('nan'))
+    
+    # 4. average atomic mass
+    try:
+      at_mass.append(sum([el.data['Atomic mass']*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      at_mass.append(float('nan'))
+    
+    # 5. average atomic radius
+    try:
+      at_r.append(sum([el.data['Atomic radius']*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      at_r.append(float('nan'))
+    
+    # 6. average ionic radius
+    try:
+      io_r.append(sum([el.average_ionic_radius*fr for (el,fr) in zip(elem,fracs)]))
+    except TypeError:
+      io_r.append(float('nan'))
+      
+  df['avg row'] = pd.Series(avg_row, index=df.index)
+  df['avg column'] = pd.Series(avg_col, index=df.index)
+  df['avg num'] = pd.Series(avg_num, index=df.index)
+  df['avg el-neg'] = pd.Series(el_neg, index=df.index)
+  df['avg atom mass'] = pd.Series(at_mass, index=df.index)
+  df['avg atom radius'] = pd.Series(at_r, index=df.index)
+  df['avg ionic radius'] = pd.Series(io_r, index=df.index)
+  
+  feat_labels = ['avg row','avg column','avg num','avg el-neg',
+                 'avg atom mass','avg atom radius','avg ionic radius']
+  
+  return df,feat_labels
+
+def add_cs_features(df,rdf_flag=False):
+
+  df["composition"] = str_to_composition(df["pretty_formula"]) 
+  df["composition_oxid"] = composition_to_oxidcomposition(df["composition"])
+  df["structure"] = dict_to_object(df["structure"]) 
+
+  vo = ValenceOrbital()
+  df = vo.featurize_dataframe(df,"composition")
+
+  ox = OxidationStates()
+  df = ox.featurize_dataframe(df, "composition_oxid")
+  
+  # structure features
+  den = DensityFeatures()
+  df = den.featurize_dataframe(df, "structure")
+  
+  if rdf_flag:
+    rdf = RadialDistributionFunction(cutoff=15.0,bin_size=0.2)
+    df = rdf.featurize_dataframe(df, "structure") 
   
   return df
